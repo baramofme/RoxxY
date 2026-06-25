@@ -43,7 +43,7 @@ RUN export PATH="${CLANG_PATH}:${ROCM_PATH}/bin:${PATH}" && \
         -DCMAKE_CXX_COMPILER="${CLANG_PATH}/clang++" \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON && \
-    cmake --build build --config Release -j 4
+    cmake --build build --config Release --target llama-server -j 4
 
 ### Runtime Base Stage
 FROM ${BASE_ROCM_DEV_CONTAINER} AS base
