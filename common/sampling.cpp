@@ -593,15 +593,16 @@ llama_token common_sampler_sample(struct common_sampler * gsmpl, struct llama_co
         if (id != LLAMA_TOKEN_NULL) {
             LOG_DBG("%s: Backend sampler selected token: '%d'. Will not run any CPU samplers\n", __func__, id);
 
-            GGML_ASSERT(!gsmpl->grmr    && "using grammar in combination with backend sampling is not supported");
-            GGML_ASSERT(!gsmpl->rbudget && "using reasoning budget in combination with backend sampling is not supported");
+            if (gsmpl->grmr || gsmpl->rbudget) {
+                LOG_WRN("%s: backend sampler selected token but grammar/reasoning budget is active, falling back to CPU sampling\n", __func__);
+            } else {
+                // TODO: simplify
+                gsmpl->cur.resize(1);
+                gsmpl->cur[0] = { id, 0.0f, 1.0f };
+                cur_p = { gsmpl->cur.data(), gsmpl->cur.size(), 0, true };
 
-            // TODO: simplify
-            gsmpl->cur.resize(1);
-            gsmpl->cur[0] = { id, 0.0f, 1.0f };
-            cur_p = { gsmpl->cur.data(), gsmpl->cur.size(), 0, true };
-
-            return id;
+                return id;
+            }
         }
     }
 
