@@ -2555,10 +2555,30 @@ bool llama_context::set_sampler(llama_seq_id seq_id, llama_sampler * sampler) {
 
         sampling.samplers.erase(seq_id);
 
+        if (sampling.samplers.empty()) {
+            sampling.sampled    = {nullptr, 0};
+            sampling.probs      = {nullptr, 0};
+            sampling.logits     = {nullptr, 0};
+            sampling.candidates = {nullptr, 0};
+            sampling.logits_count.clear();
+            sampling.probs_count.clear();
+            sampling.candidates_count.clear();
+        }
+
         return false;
     }
 
     sampling.samplers.erase(seq_id);
+
+    if (sampling.samplers.empty()) {
+        sampling.sampled    = {nullptr, 0};
+        sampling.probs      = {nullptr, 0};
+        sampling.logits     = {nullptr, 0};
+        sampling.candidates = {nullptr, 0};
+        sampling.logits_count.clear();
+        sampling.probs_count.clear();
+        sampling.candidates_count.clear();
+    }
 
     sched_need_reserve = true;
 
