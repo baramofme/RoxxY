@@ -1,0 +1,74 @@
+# Dockerfile.roxxy-lds - baramofme/feature/roxxy-lds
+# RoxxY Packed16 FlashAttention for RDNA3
+ARG UBUNTU_VERSION=24.04
+ARG ROCM_VERSION=7.2.1
+ARG AMDGPU_VERSION=7.2.1
+ARG BASE_ROCM_DEV_CONTAINER=rocm/dev-ubuntu-${UBUNTU_VERSION}:${ROCM_VERSION}-complete
+
+### Build stage
+FROM ${BASE_ROCM_DEV_CONTAINER} AS build-roxxy-lds
+
+# Build target architecture (7900 XTX)
+ARG ROCM_DOCKER_ARCH=gfx1100
+ENV AMDGPU_TARGETS=${ROCM_DOCKER_ARCH}
+
+# Compiler paths
+ENV ROCM_PATH=/opt/rocm
+ENV CLANG_PATH=/opt/rocm/llvm/bin
+
+# Repo config
+ARG ROXXY_REPO=baramofme/RoxxY
+ARG ROXXY_BRANCH=feature/roxxy-lds
+
+# Install build tools
+RUN apt-get update && apt-get install -y \
+    build-essential cmake git libssl-dev curl ninja-build libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Clone source
+RUN git clone --branch ${ROXXY_BRANCH} https://github.com/${ROXXY_REPO} .
+
+# Build
+RUN export PATH="${CLANG_PATH}:${ROCM_PATH}/bin:${PATH}" && \
+    HIPCXX="${CLANG_PATH}/clang++" \
+    HIP_PATH="${ROCM_PATH}" \
+    cmake -S . -B build -G Ninja \
+        -DGPU_TARGETS="${ROCM_DOCKER_ARCH}" \
+        -DGGML_HIP=ON \
+        -DGGML_HIP_ROCWMMA_FATTN=ON \
+        -DCMAKE_HIP_ARCHITECTURES="gfx1100;gfx942;gfx950" \
+        -DCMAKE_C_COMPILER="${CLANG_PATH}/clang" \
+        -DCMAKE_CXX_COMPILER="${CLANG_PATH}/clang++" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON && \
+    cmake --build build --config Release -j 4
+
+### Runtime Base Stage
+FROM ${BASE_ROCM_DEV_CONTAINER} AS base
+RUN apt-get update \
+    && apt-get install -y libgomp1 curl \
+    && apt autoremove -y \
+    && apt clean -y \
+    && rm -rf /tmp/* /var/tmp/* \
+    && find /var/cache/apt/archives /var/lib/apt/lists -not -name lock -type f -delete \
+    && find /var/cache -type f -delete
+
+### === Server target ===
+FROM base AS roxxy-lds-server
+
+COPY --from=build-roxxy-lds /app/build/bin/* /app/
+COPY --from=build-roxxy-lds /app/build/**/*.so* /app/
+
+ENV LD_LIBRARY_PATH=/app:/opt/rocm/lib
+ENV PATH="/app:${PATH}"
+ENV HIP_VISIBLE_DEVICES=0
+
+WORKDIR /app
+
+HEALTHCHECK CMD [ "curl", "-f", "http://localhost:8080/health" ]
+EXPOSE 8080
+
+ENTRYPOINT ["./llama-server"]
+CMD ["--host", "0.0.0.0", "--port", "8080"]
